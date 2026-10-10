@@ -193,7 +193,7 @@ const SCHEMA={type:'OBJECT',properties:{
   required:['items']};
 
 /* ---------- state ---------- */
-const DEF=()=>({settings:{apiKey:'',model:MODELS[0],goal:2000,
+const DEF=()=>({settings:{provider:'openrouter',apiKey:'',model:MODELS[0],orKey:'',orModel:'openrouter/free',goal:2000,
   calc:{sex:'m',age:'',height:'',weight:'',activity:'1.375',deficit:'15'}},days:{}});
 function loadState(){
   const d=DEF();
@@ -339,7 +339,7 @@ async function callGemini(model,body){
   let data=null; try{ data=await res.json(); }catch(e){}
   if(!res.ok){
     const msg=(data&&data.error&&data.error.message)||'';
-    if(/location is not supported/i.test(msg)) throw new Error('Gemini недоступен в твоём регионе. Включи VPN.');
+    if(/location is not supported/i.test(msg)) throw new Error('Gemini недоступен в твоём регионе. Включи VPN или переключись на OpenRouter в настройках.');
     if(res.status===400&&/API key/i.test(msg)) throw new Error('Ключ не подошёл. Проверь его в настройках.');
     if(res.status===404) throw new Error('Модель «'+model+'» недоступна. Выбери другую в настройках.');
     if(res.status===429) throw new Error('Бесплатный лимит запросов исчерпан. Подожди минуту или до завтра.');
@@ -356,8 +356,16 @@ function parseGemini(data){
     const why=data&&data.promptFeedback&&data.promptFeedback.blockReason;
     throw new Error(why?'Gemini отклонил запрос ('+why+').':'Пустой ответ от Gemini. Попробуй ещё раз.');
   }
-  text=text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
-  let obj; try{ obj=JSON.parse(text); }catch(e){ throw new Error('Не удалось разобрать ответ. Попробуй ещё раз.'); }
+  return normalizeResult(parseJsonText(text));
+}
+function parseJsonText(text){
+  text=String(text).trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+  const a=text.indexOf('{'), b=text.lastIndexOf('}');
+  if(a<0||b<=a) throw new Error('Модель ответила не в нужном формате. Попробуй ещё раз или выбери другую модель.');
+  try{ return JSON.parse(text.slice(a,b+1)); }
+  catch(e){ throw new Error('Не удалось разобрать ответ. Попробуй ещё раз.'); }
+}
+function normalizeResult(obj){
   const items=(Array.isArray(obj.items)?obj.items:[]).map(i=>({
     name:String(i.name||'').trim(),grams:Math.round(num(i.grams)),kcal:Math.round(num(i.kcal)),
     protein:r1(num(i.protein)),fat:r1(num(i.fat)),carbs:r1(num(i.carbs))})).filter(i=>i.name||i.kcal);
@@ -371,6 +379,43 @@ async function askGemini(img,text){
     contents:[{role:'user',parts:parts}],
     generationConfig:{responseMimeType:'application/json',responseSchema:SCHEMA}});
   return parseGemini(data);
+}
+const JSON_HINT='Ответь ТОЛЬКО одним JSON-объектом без markdown и пояснений, строго такого вида: {"title":"...","note":"...","items":[{"name":"...","grams":0,"kcal":0,"protein":0,"fat":0,"carbs":0}]}';
+async function askOpenRouter(img,text){
+  const s=state.settings, model=s.orModel||'openrouter/free';
+  const content=[{type:'text',text:'Оцени калорийность и БЖУ приёма пищи.'+(text?' Описание от пользователя: '+text:'')+(img?' Фото приложено.':'')}];
+  if(img) content.push({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}});
+  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),90000);
+  let res;
+  try{
+    res=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',signal:ctrl.signal,
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+String(s.orKey).trim()},
+      body:JSON.stringify({model:model,messages:[{role:'system',content:SYSTEM+' '+JSON_HINT},{role:'user',content:content}]})});
+  }catch(e){
+    throw new Error(e.name==='AbortError'?'Модель долго отвечает. Попробуй ещё раз.':'Нет связи с OpenRouter. Проверь интернет.');
+  }finally{ clearTimeout(to); }
+  let data=null; try{ data=await res.json(); }catch(e){}
+  if(!res.ok||(data&&data.error)){
+    const code=Number((data&&data.error&&data.error.code)||res.status), msg=String((data&&data.error&&data.error.message)||'');
+    if(code===401) throw new Error('Ключ OpenRouter не подошёл. Проверь его в настройках.');
+    if(code===402) throw new Error('Для этой модели нужен баланс. Выбери бесплатную модель (с :free на конце).');
+    if(code===404||/no endpoints/i.test(msg)) throw new Error('Эта модель сейчас недоступна или не принимает фото. Выбери другую в настройках.');
+    if(code===429) throw new Error('Лимит бесплатных запросов исчерпан (20 в минуту, 50 в день). Подожди или смени модель.');
+    throw new Error('Ошибка OpenRouter '+code+(msg?': '+msg.slice(0,160):''));
+  }
+  const m=data&&data.choices&&data.choices[0]&&data.choices[0].message;
+  let out=m&&m.content;
+  if(Array.isArray(out)) out=out.map(p=>(p&&p.text)||'').join('');
+  if(!out) throw new Error('Пустой ответ от модели. Попробуй ещё раз или выбери другую модель.');
+  return normalizeResult(parseJsonText(out));
+}
+function askAI(img,text){ return state.settings.provider==='gemini'?askGemini(img,text):askOpenRouter(img,text); }
+async function listOpenRouterModels(){
+  const res=await fetch('https://openrouter.ai/api/v1/models');
+  const data=await res.json().catch(()=>null);
+  if(!res.ok||!data) throw new Error('Ошибка '+res.status);
+  const free=(data.data||[]).filter(m=>/:free$/.test(m.id)&&m.architecture&&(m.architecture.input_modalities||[]).indexOf('image')>=0).map(m=>m.id).sort();
+  return ['openrouter/free'].concat(free);
 }
 async function listModels(){
   const res=await fetch(API+'/models?pageSize=1000',{headers:{'x-goog-api-key':String(state.settings.apiKey).trim()}});
@@ -510,30 +555,44 @@ function section(title,...kids){return h('section',{class:'label'},h('p',{class:
 function field(label,id,input,hint){return [h('label',{class:'f',for:id},label),input,hint?h('p',{class:'hint'},hint):null];}
 function viewSettings(){
   const s=state.settings, c=s.calc;
-  const keyIn=h('input',{id:'s-key',type:'password',autocomplete:'off',autocapitalize:'off',spellcheck:'false',value:s.apiKey,
-    oninput:e=>{s.apiKey=e.target.value.trim();save();}});
-  const modelIn=h('input',{id:'s-model',type:'text',list:'models',autocapitalize:'off',spellcheck:'false',value:s.model,
-    oninput:e=>{s.model=e.target.value.trim()||MODELS[0];save();chips.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',String(b.textContent===s.model)));}});
-  const dl=h('datalist',{id:'models'},MODELS.map(m=>h('option',{value:m})));
+  const isG=s.provider==='gemini';
+  const keyField=isG?'apiKey':'orKey', modelField=isG?'model':'orModel', defModel=isG?MODELS[0]:'openrouter/free';
+  const provRow=h('div',{class:'chips'},[['openrouter','OpenRouter'],['gemini','Gemini']].map(x=>
+    h('button',{class:'chip',type:'button','aria-pressed':String((isG?'gemini':'openrouter')===x[0]),onclick:()=>{s.provider=x[0];save();render();}},x[1])));
   const chips=h('div',{class:'chips'});
+  const markChips=()=>chips.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',String(b.textContent===s[modelField])));
+  const keyIn=h('input',{id:'s-key',type:'password',autocomplete:'off',autocapitalize:'off',spellcheck:'false',value:s[keyField]||'',
+    oninput:e=>{s[keyField]=e.target.value.trim();save();}});
+  const modelIn=h('input',{id:'s-model',type:'text',list:'models',autocapitalize:'off',spellcheck:'false',value:s[modelField]||defModel,
+    oninput:e=>{s[modelField]=e.target.value.trim()||defModel;save();markChips();}});
+  const dl=h('datalist',{id:'models'},(isG?MODELS:['openrouter/free']).map(m=>h('option',{value:m})));
   const modelMsg=h('p',{class:'hint'});
   const listBtn=h('button',{class:'btn',type:'button',onclick:async()=>{
-    if(!s.apiKey) return toast('Сначала вставь ключ');
-    listBtn.disabled=true; modelMsg.textContent='Проверяю ключ…';
+    if(isG&&!s.apiKey) return toast('Сначала вставь ключ');
+    listBtn.disabled=true; modelMsg.textContent=isG?'Проверяю ключ…':'Загружаю список…';
     try{
-      const ms=await listModels(); chips.replaceChildren();
-      if(!ms.length){modelMsg.textContent='Подходящих моделей не нашлось.';}
+      const ms=isG?await listModels():await listOpenRouterModels();
+      chips.replaceChildren();
+      if(!ms.length){ modelMsg.textContent='Подходящих моделей не нашлось.'; }
       else{
-        modelMsg.textContent='Ключ работает. Выбери модель (flash и flash-lite обычно бесплатны):';
-        ms.slice(0,14).forEach(n=>chips.append(h('button',{class:'chip',type:'button','aria-pressed':String(n===s.model),onclick:()=>{
-          s.model=n;modelIn.value=n;save();chips.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',String(b.textContent===n)));}},n)));
+        modelMsg.textContent=isG?'Ключ работает. Выбери модель (flash и flash-lite обычно бесплатны):'
+          :'Бесплатные модели с поддержкой фото. Список меняется: если одна перестала работать, выбери другую.';
+        ms.slice(0,14).forEach(n=>chips.append(h('button',{class:'chip',type:'button','aria-pressed':String(n===s[modelField]),
+          onclick:()=>{s[modelField]=n;modelIn.value=n;save();markChips();}},n)));
       }
-    }catch(e){ modelMsg.textContent='Не получилось: '+e.message+' (проверь ключ и VPN)'; }
+    }catch(e){ modelMsg.textContent='Не получилось: '+e.message+(isG?' (проверь ключ и VPN)':''); }
     listBtn.disabled=false;
-  }},'Проверить ключ и показать модели');
-  const gemini=section('Gemini',
-    field('API-ключ','s-key',keyIn,null),
-    h('p',{class:'hint'},'Ключ хранится только в этом браузере. Бесплатный ключ: ',h('a',{href:'https://aistudio.google.com/apikey',target:'_blank',rel:'noopener'},'aistudio.google.com/apikey')),
+  }},isG?'Проверить ключ и показать модели':'Показать бесплатные модели с фото');
+  const keyHint=isG
+    ?h('p',{class:'hint'},'Ключ хранится только в этом браузере. Бесплатный ключ: ',
+        h('a',{href:'https://aistudio.google.com/apikey',target:'_blank',rel:'noopener'},'aistudio.google.com/apikey'),
+        '. Gemini не работает, если Google видит российский IP.')
+    :h('p',{class:'hint'},'Ключ хранится только в этом браузере. Получить ключ: ',
+        h('a',{href:'https://openrouter.ai/keys',target:'_blank',rel:'noopener'},'openrouter.ai/keys'),
+        '. У бесплатных моделей лимит 20 запросов в минуту и 50 в день. Модель «openrouter/free» сама выбирает свободную бесплатную модель, которая понимает фото.');
+  const gemini=section('Нейросеть',
+    h('label',{class:'f'},'Провайдер'),provRow,
+    field('API-ключ','s-key',keyIn,null),keyHint,
     field('Модель','s-model',modelIn,null),dl,
     h('div',{class:'btns'},listBtn),modelMsg,chips);
 
@@ -646,7 +705,7 @@ function sheetInput(){
       oninput:e=>{sheet.text=e.target.value;}}),
     h('p',{class:'hint'},'Вес и способ приготовления делают оценку точнее. Если не уверен, оставь только фото.'),
     sheet.error?(noKey
-      ?h('div',{class:'error'},'Нужен ключ Gemini. ',h('a',{href:'#',style:'color:inherit;font-weight:800',onclick:ev=>{ev.preventDefault();closeSheet();ui.tab='set';render();}},'Открыть настройки'))
+      ?h('div',{class:'error'},'Нужен ключ нейросети. ',h('a',{href:'#',style:'color:inherit;font-weight:800',onclick:ev=>{ev.preventDefault();closeSheet();ui.tab='set';render();}},'Открыть настройки'))
       :h('div',{class:'error',role:'alert'},sheet.error)):null,
     h('div',{class:'btns'},
       h('button',{class:'btn accent',type:'button',disabled:sheet.busy,onclick:runAnalyze},sheet.busy?'Считаю…':'Посчитать'),
@@ -655,10 +714,10 @@ function sheetInput(){
 async function runAnalyze(){
   const cur=sheet; if(!cur) return;
   if(!cur.img&&!cur.text.trim()){ cur.error='Добавь фото или описание еды.'; return renderSheet(); }
-  if(!state.settings.apiKey){ cur.error='NO_KEY'; return renderSheet(); }
+  if(!(state.settings.provider==='gemini'?state.settings.apiKey:state.settings.orKey)){ cur.error='NO_KEY'; return renderSheet(); }
   cur.busy=true; cur.error=''; renderSheet();
   try{
-    const r=await askGemini(cur.img,cur.text.trim());
+    const r=await askAI(cur.img,cur.text.trim());
     if(sheet!==cur) return;
     cur.busy=false;
     if(!r.items.length){ cur.error=r.note||'Еду распознать не удалось. Уточни описание или сделай другое фото.'; }
