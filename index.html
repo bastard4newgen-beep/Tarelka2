@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Тарелка</title>
+<meta name="theme-color" content="#F2F4F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1311" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap">
+<style>
+/* Layout concept: the whole app is one nutrition-facts label. Heavy black rules,
+   squared corners, huge condensed numerals, hard offset shadow on the one action button. */
+:root{
+  --bg:#F2F4F0; --surface:#FFFFFF; --ink:#14181A; --muted:#5C6763; --rule:#14181A; --hair:#D3D9D2;
+  --accent:#1E7A4C; --accent-ink:#FFFFFF; --ok-bg:#DCEEE3;
+  --over:#B42318; --over-bg:#F8DDD9;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0F1311; --surface:#171C19; --ink:#EAEFEA; --muted:#9AA6A0; --rule:#EAEFEA; --hair:#2B332F;
+    --accent:#62D49B; --accent-ink:#0B140F; --ok-bg:#1B2E24;
+    --over:#FF8B7E; --over-bg:#3A1F1C;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.4 var(--font)}
+body.noscroll{overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+.app{max-width:520px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(100px + env(safe-area-inset-bottom,0px))}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* tab bar */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top:4px solid var(--rule);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar-in{display:flex;max-width:520px;margin:0 auto}
+.tab{flex:1;min-width:0;border:0;background:transparent;padding:14px 4px;font-size:14px;font-weight:800;font-stretch:80%;letter-spacing:.07em;text-transform:uppercase;cursor:pointer}
+.tab[aria-current="page"]{background:var(--ink);color:var(--bg)}
+.fab{position:fixed;z-index:6;right:max(16px,calc((100vw - 520px)/2 + 16px));bottom:calc(68px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-ink);border:2px solid var(--rule);box-shadow:4px 4px 0 var(--rule);padding:13px 20px;font-size:18px;font-weight:900;font-stretch:90%;letter-spacing:.02em;cursor:pointer}
+.fab:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--rule)}
+
+/* date nav */
+.datenav{display:grid;grid-template-columns:48px 1fr 48px;gap:8px;margin-bottom:12px}
+.datenav .icon{min-height:48px;border:2px solid var(--rule);background:var(--surface);font-size:26px;font-weight:800;cursor:pointer;line-height:1}
+.datebtn{border:0;background:transparent;text-align:center;cursor:pointer;padding:0 4px}
+.datebtn b{display:block;font-size:24px;font-weight:900;font-stretch:85%;letter-spacing:-.01em;text-transform:uppercase}
+.datebtn span{display:block;font-size:13px;color:var(--muted)}
+
+/* label panel */
+.label{background:var(--surface);border:2px solid var(--rule);padding:12px 14px 8px;margin-bottom:16px}
+.eyebrow{margin:0;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.big-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;margin-top:2px}
+.big{font-size:76px;line-height:.95;font-weight:900;font-stretch:80%;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.unit{font-size:20px;font-weight:800}
+.of{margin-left:auto;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.bar{height:16px;border:2px solid var(--rule);margin-top:10px;background:var(--bg)}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.over .bar>i{background:var(--over)}
+.left{margin:8px 0 10px;font-weight:700}
+.over .left{color:var(--over)}
+.thick{height:8px;background:var(--rule);margin:0 -14px}
+.row{display:grid;grid-template-columns:1fr auto 52px;gap:8px;align-items:baseline;padding:7px 0;border-top:1px solid var(--hair)}
+.row.first{border-top:0}
+.row .val{font-weight:700;font-variant-numeric:tabular-nums}
+.row .pc{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+.row.head{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-top:0}
+.row.head span:last-child{text-align:right}
+
+/* meals */
+.meal{border-top:4px solid var(--rule);padding:10px 0 12px;cursor:pointer}
+.meal-head{display:flex;align-items:baseline;gap:10px}
+.meal-name{font-size:18px;font-weight:900;font-stretch:90%;letter-spacing:.03em;text-transform:uppercase}
+.meal-time{color:var(--muted);font-variant-numeric:tabular-nums}
+.meal-kcal{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.items{list-style:none;margin:6px 0 0;padding:0}
+.items li{display:flex;justify-content:space-between;gap:12px;padding:3px 0;border-top:1px solid var(--hair);font-size:15px}
+.items li span:first-child{min-width:0;overflow-wrap:anywhere}
+.items li span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.empty-state{border:2px dashed var(--muted);padding:18px;color:var(--muted)}
+.export{border-top:4px solid var(--rule);padding-top:12px;margin-top:4px}
+.export p{margin:0 0 4px;font-size:13px;color:var(--muted)}
+
+/* controls */
+label.f{display:block;margin:12px 0 4px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+input,select,textarea{display:block;width:100%;min-height:44px;padding:10px 12px;background:var(--surface);border:2px solid var(--rule);border-radius:0}
+textarea{min-height:88px;resize:vertical}
+.btn{min-height:44px;padding:10px 16px;border:2px solid var(--rule);border-radius:0;background:var(--surface);font-weight:800;cursor:pointer}
+.btn.primary{background:var(--ink);color:var(--bg)}
+.btn.accent{background:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.5;cursor:default}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.hint{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.hint a{color:inherit}
+.error{margin:12px 0 0;padding:10px 12px;border:2px solid var(--over);background:var(--over-bg);font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{min-height:40px;padding:6px 12px;border:2px solid var(--rule);background:var(--surface);font-weight:700;cursor:pointer;overflow-wrap:anywhere;text-align:left}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+/* sheet */
+.sheet{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.5)}
+.panel{position:relative;width:100%;max-width:520px;max-height:92vh;max-height:92dvh;overflow:auto;background:var(--bg);border-top:6px solid var(--rule);padding:14px 16px calc(20px + env(safe-area-inset-bottom,0px))}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.panel-head h2{margin:0;font-size:26px;font-weight:900;font-stretch:85%;text-transform:uppercase}
+.panel-head .btn{min-width:44px;padding:6px 12px}
+.photo{display:flex;gap:10px;margin-top:6px}
+.photo .btn{flex:1}
+.preview{margin-top:10px}
+.preview img{display:block;width:100%;max-height:240px;object-fit:cover;border:2px solid var(--rule)}
+.ed{border-top:4px solid var(--rule);padding:10px 0}
+.ed-grid{display:grid;grid-template-columns:1fr 1fr 44px;gap:8px;align-items:end;margin-top:6px}
+.ed small{display:block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ed .rm{padding:0;min-width:44px}
+.macros{display:block;margin-top:4px;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.sum{border:2px solid var(--rule);background:var(--surface);padding:10px 14px;margin-top:6px}
+.sum .big-line{display:flex;align-items:baseline;gap:8px}
+.sum .n{font-size:44px;font-weight:900;font-stretch:80%;line-height:1;font-variant-numeric:tabular-nums}
+.note{margin:8px 0 0;font-size:14px;color:var(--muted)}
+
+/* calendar */
+.monthnav{display:grid;grid-template-columns:48px 1fr 48px;gap:8px;margin-bottom:12px;align-items:center}
+.monthnav .icon{min-height:48px;border:2px solid var(--rule);background:var(--surface);font-size:26px;font-weight:800;cursor:pointer;line-height:1}
+.monthnav h2{margin:0;text-align:center;font-size:24px;font-weight:900;font-stretch:85%;text-transform:uppercase}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.dow{padding:4px 0;text-align:center;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.cell{display:flex;flex-direction:column;justify-content:space-between;min-width:0;aspect-ratio:1/1.1;padding:4px;border:2px solid var(--hair);border-radius:0;background:var(--surface);text-align:left;cursor:pointer}
+.cell.empty{border:0;background:transparent;cursor:default}
+.cell .d{font-size:14px;font-weight:800}
+.cell .k{align-self:flex-end;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.cell.ok{background:var(--ok-bg);border-color:var(--accent)}
+.cell.over{background:var(--over-bg);border-color:var(--over)}
+.cell.today{border-color:var(--rule)}
+.cell.today .d{text-decoration:underline}
+.cell.sel{box-shadow:0 0 0 3px var(--rule)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 16px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:14px;margin-right:6px;vertical-align:-2px;border:2px solid var(--accent);background:var(--ok-bg)}
+.legend i.o{border-color:var(--over);background:var(--over-bg)}
+
+.toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:30;max-width:calc(100% - 32px);padding:10px 16px;background:var(--ink);color:var(--bg);font-weight:700;text-align:center}
+@media (max-width:360px){.big{font-size:64px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main class="app" id="view"></main>
+<button class="fab" id="fab" type="button">+ Еда</button>
+<nav class="tabbar" aria-label="Разделы">
+  <div class="tabbar-in">
+    <button class="tab" type="button" data-tab="today">День</button>
+    <button class="tab" type="button" data-tab="cal">Календарь</button>
+    <button class="tab" type="button" data-tab="set">Настройки</button>
+  </div>
+</nav>
+<div class="sheet" id="sheet" hidden>
+  <div class="scrim" id="scrim"></div>
+  <div class="panel" id="panel" role="dialog" aria-modal="true" aria-label="Приём пищи"></div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- constants ---------- */
+const LS='tarelka.v1';
+const API='https://generativelanguage.googleapis.com/v1beta';
+const TYPES=[['breakfast','Завтрак'],['lunch','Обед'],['dinner','Ужин'],['snack','Перекус']];
+const MODELS=['gemini-3.1-flash-lite','gemini-3-flash-preview','gemini-2.5-flash','gemini-2.5-flash-lite'];
+const SYSTEM='Ты помощник по подсчёту калорий. Определи все блюда и напитки по фото и/или описанию пользователя. '
+ +'Если вес или объём указан, используй его; иначе оцени порцию по размеру посуды и привычным порциям. '
+ +'Учитывай масло, соусы, сахар и способ приготовления. Названия пиши по-русски, коротко. '
+ +'Для каждого продукта верни вес порции в граммах (напитки в мл как граммы), калории в ккал, белки, жиры и углеводы в граммах для этой порции целиком. '
+ +'Не завышай и не занижай намеренно: давай наиболее вероятную оценку. '
+ +'Если еды не видно и в описании её нет, верни пустой список items и объясни в note. '
+ +'В title дай короткое название всего приёма пищи, в note одну короткую фразу о главной неопределённости оценки (или пустую строку).';
+const SCHEMA={type:'OBJECT',properties:{
+  title:{type:'STRING'},
+  note:{type:'STRING'},
+  items:{type:'ARRAY',items:{type:'OBJECT',properties:{
+    name:{type:'STRING'},grams:{type:'NUMBER'},kcal:{type:'NUMBER'},
+    protein:{type:'NUMBER'},fat:{type:'NUMBER'},carbs:{type:'NUMBER'}},
+    required:['name','grams','kcal','protein','fat','carbs']}}},
+  required:['items']};
+
+/* ---------- state ---------- */
+const DEF=()=>({settings:{apiKey:'',model:MODELS[0],goal:2000,
+  calc:{sex:'m',age:'',height:'',weight:'',activity:'1.375',deficit:'15'}},days:{}});
+function loadState(){
+  const d=DEF();
+  try{
+    const raw=localStorage.getItem(LS);
+    if(raw){
+      const s=JSON.parse(raw);
+      if(s&&typeof s==='object'){
+        Object.assign(d.settings,s.settings||{});
+        d.settings.calc=Object.assign(DEF().settings.calc,(s.settings&&s.settings.calc)||{});
+        if(s.days&&typeof s.days==='object') d.days=s.days;
+      }
+    }
+  }catch(e){}
+  return d;
+}
+let state=loadState();
+let saveWarned=false;
+function save(){
+  try{ localStorage.setItem(LS,JSON.stringify(state)); }
+  catch(e){ if(!saveWarned){ saveWarned=true; toast('Не удалось сохранить данные в браузере'); } }
+}
+
+/* ---------- helpers ---------- */
+const $=(s,r)=> (r||document).querySelector(s);
+const $$=(s,r)=> Array.from((r||document).querySelectorAll(s));
+function h(tag,props,...kids){
+  const e=document.createElement(tag); let val;
+  if(props) for(const k of Object.keys(props)){
+    const v=props[k]; if(v==null||v===false) continue;
+    if(k==='class') e.className=v;
+    else if(k==='value') val=v;
+    else if(k.slice(0,2)==='on') e.addEventListener(k.slice(2),v);
+    else e.setAttribute(k,v===true?'':String(v));
+  }
+  kids.flat(Infinity).forEach(c=>{ if(c==null||c===false) return; e.append(c.nodeType?c:document.createTextNode(String(c))); });
+  if(val!==undefined) e.value=val;
+  return e;
+}
+const pad=n=>String(n).padStart(2,'0');
+const keyOf=(y,m,d)=>y+'-'+pad(m+1)+'-'+pad(d);
+const dateKey=d=>keyOf(d.getFullYear(),d.getMonth(),d.getDate());
+const todayKey=()=>dateKey(new Date());
+const parseKey=k=>{const p=k.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]);};
+const addDays=(k,n)=>{const d=parseKey(k);d.setDate(d.getDate()+n);return dateKey(d);};
+const compact=k=>k.replace(/-/g,'');
+const hhmm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
+const num=v=>{const n=parseFloat(String(v).replace(',','.'));return isFinite(n)&&n>0?n:0;};
+const r1=n=>Math.round(n*10)/10;
+const fmt=n=>Math.round(n).toLocaleString('ru-RU');
+const fmt1=n=>r1(n).toLocaleString('ru-RU');
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const typeName=t=>(TYPES.find(x=>x[0]===t)||['',''])[1]||'Приём пищи';
+const typeByHour=hr=>hr<11?'breakfast':hr<16?'lunch':hr<21?'dinner':'snack';
+
+function totals(meals){
+  const t={kcal:0,p:0,f:0,c:0};
+  (meals||[]).forEach(m=>(m.items||[]).forEach(i=>{
+    t.kcal+=Number(i.kcal)||0; t.p+=Number(i.protein)||0; t.f+=Number(i.fat)||0; t.c+=Number(i.carbs)||0;
+  }));
+  return t;
+}
+const sortedMeals=k=>((state.days[k]||[]).slice().sort((a,b)=>String(a.time).localeCompare(String(b.time))));
+
+let toastTimer=null;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.hidden=false;
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>{t.hidden=true;},2800);
+}
+function arm(btn,armedText,action){
+  const orig=btn.textContent; let armed=false, timer=null;
+  btn.addEventListener('click',()=>{
+    if(!armed){ armed=true; btn.textContent=armedText; timer=setTimeout(()=>{armed=false;btn.textContent=orig;},3000); return; }
+    clearTimeout(timer); armed=false; btn.textContent=orig; action();
+  });
+}
+function download(name,text,type){
+  const blob=new Blob([text],{type:type});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.append(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+
+/* ---------- calendar export ---------- */
+function icsEscape(s){return String(s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
+function foldLine(line){
+  const enc=new TextEncoder(); let out='',cur='',bytes=0;
+  for(const ch of line){
+    const b=enc.encode(ch).length;
+    if(bytes+b>74){ out+=cur+'\r\n '; cur=''; bytes=1; }
+    cur+=ch; bytes+=b;
+  }
+  return out+cur;
+}
+function daySummary(k){
+  const t=totals(state.days[k]||[]), goal=Number(state.settings.goal)||0;
+  return 'Калории: '+fmt(t.kcal)+(goal?' / '+fmt(goal):'')+' ккал';
+}
+function dayText(k){
+  const meals=sortedMeals(k); const t=totals(meals); const lines=[];
+  meals.forEach(m=>{
+    const mt=totals([m]);
+    lines.push(typeName(m.type)+' '+m.time+': '+fmt(mt.kcal)+' ккал');
+    m.items.forEach(i=>lines.push('  • '+i.name+(i.grams?', '+fmt(i.grams)+' г':'')+' — '+fmt(i.kcal)));
+  });
+  lines.push('');
+  lines.push('Белки '+fmt1(t.p)+' г · Жиры '+fmt1(t.f)+' г · Углеводы '+fmt1(t.c)+' г');
+  return lines.join('\n');
+}
+function buildICS(keys){
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Tarelka//RU','CALSCALE:GREGORIAN','X-WR-CALNAME:Калории'];
+  keys.forEach(k=>{
+    if(!(state.days[k]||[]).length) return;
+    L.push('BEGIN:VEVENT','UID:tarelka-'+compact(k)+'@tarelka.local','DTSTAMP:'+stamp,
+      'DTSTART;VALUE=DATE:'+compact(k),'DTEND;VALUE=DATE:'+compact(addDays(k,1)),
+      'SUMMARY:'+icsEscape(daySummary(k)),'DESCRIPTION:'+icsEscape(dayText(k)),'TRANSP:TRANSPARENT','END:VEVENT');
+  });
+  L.push('END:VCALENDAR');
+  return L.map(foldLine).join('\r\n')+'\r\n';
+}
+function gcalUrl(k){
+  const p=new URLSearchParams({action:'TEMPLATE',text:daySummary(k),details:dayText(k).slice(0,1800),
+    dates:compact(k)+'/'+compact(addDays(k,1))});
+  return 'https://calendar.google.com/calendar/render?'+p.toString();
+}
+function loggedKeys(prefix){
+  return Object.keys(state.days).filter(k=>(!prefix||k.indexOf(prefix)===0)&&(state.days[k]||[]).length).sort();
+}
+
+/* ---------- Gemini ---------- */
+async function callGemini(model,body){
+  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),60000);
+  let res;
+  try{
+    res=await fetch(API+'/models/'+encodeURIComponent(model)+':generateContent',{
+      method:'POST',signal:ctrl.signal,
+      headers:{'Content-Type':'application/json','x-goog-api-key':String(state.settings.apiKey).trim()},
+      body:JSON.stringify(body)});
+  }catch(e){
+    throw new Error(e.name==='AbortError'?'Gemini долго не отвечает. Попробуй ещё раз.':'Нет связи с Gemini. Проверь интернет и VPN.');
+  }finally{ clearTimeout(to); }
+  let data=null; try{ data=await res.json(); }catch(e){}
+  if(!res.ok){
+    const msg=(data&&data.error&&data.error.message)||'';
+    if(/location is not supported/i.test(msg)) throw new Error('Gemini недоступен в твоём регионе. Включи VPN.');
+    if(res.status===400&&/API key/i.test(msg)) throw new Error('Ключ не подошёл. Проверь его в настройках.');
+    if(res.status===404) throw new Error('Модель «'+model+'» недоступна. Выбери другую в настройках.');
+    if(res.status===429) throw new Error('Бесплатный лимит запросов исчерпан. Подожди минуту или до завтра.');
+    if(res.status===403) throw new Error('Доступ запрещён (403). Проверь ключ и VPN.');
+    throw new Error('Ошибка Gemini '+res.status+(msg?': '+msg.slice(0,160):''));
+  }
+  return data;
+}
+function parseGemini(data){
+  const c=data&&data.candidates&&data.candidates[0];
+  const parts=(c&&c.content&&c.content.parts)||[];
+  let text=parts.filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('').trim();
+  if(!text){
+    const why=data&&data.promptFeedback&&data.promptFeedback.blockReason;
+    throw new Error(why?'Gemini отклонил запрос ('+why+').':'Пустой ответ от Gemini. Попробуй ещё раз.');
+  }
+  text=text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+  let obj; try{ obj=JSON.parse(text); }catch(e){ throw new Error('Не удалось разобрать ответ. Попробуй ещё раз.'); }
+  const items=(Array.isArray(obj.items)?obj.items:[]).map(i=>({
+    name:String(i.name||'').trim(),grams:Math.round(num(i.grams)),kcal:Math.round(num(i.kcal)),
+    protein:r1(num(i.protein)),fat:r1(num(i.fat)),carbs:r1(num(i.carbs))})).filter(i=>i.name||i.kcal);
+  return {items:items,title:String(obj.title||''),note:String(obj.note||'')};
+}
+async function askGemini(img,text){
+  const parts=[{text:'Оцени калорийность и БЖУ приёма пищи.'+(text?' Описание от пользователя: '+text:'')+(img?' Фото приложено.':'')}];
+  if(img) parts.push({inline_data:{mime_type:'image/jpeg',data:img}});
+  const data=await callGemini(state.settings.model||MODELS[0],{
+    system_instruction:{parts:[{text:SYSTEM}]},
+    contents:[{role:'user',parts:parts}],
+    generationConfig:{responseMimeType:'application/json',responseSchema:SCHEMA}});
+  return parseGemini(data);
+}
+async function listModels(){
+  const res=await fetch(API+'/models?pageSize=1000',{headers:{'x-goog-api-key':String(state.settings.apiKey).trim()}});
+  const data=await res.json().catch(()=>null);
+  if(!res.ok) throw new Error((data&&data.error&&data.error.message)||('Ошибка '+res.status));
+  return (data.models||[]).filter(m=>/gemini/i.test(m.name)&&(m.supportedGenerationMethods||[]).indexOf('generateContent')>=0
+      &&!/(image|tts|embedding|live|audio|robotics|computer|thinking-exp|learnlm)/i.test(m.name))
+    .map(m=>m.name.replace(/^models\//,'')).sort((a,b)=>(/flash/.test(b)?1:0)-(/flash/.test(a)?1:0)||a.localeCompare(b));
+}
+function shrink(file,max){
+  max=max||1024;
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file), img=new Image();
+    img.onload=()=>{
+      const k=Math.min(1,max/Math.max(img.width,img.height));
+      const w=Math.round(img.width*k), hh=Math.round(img.height*k);
+      const c=document.createElement('canvas'); c.width=w; c.height=hh;
+      c.getContext('2d').drawImage(img,0,0,w,hh);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg',0.82).split(',')[1]);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('img'));};
+    img.src=url;
+  });
+}
+
+/* ---------- UI state ---------- */
+const now0=new Date();
+const ui={tab:'today',date:todayKey(),month:{y:now0.getFullYear(),m:now0.getMonth()}};
+let sheet=null, sumEls=null, installEvt=null;
+
+function render(){
+  const view=$('#view');
+  view.replaceChildren(ui.tab==='today'?viewToday():ui.tab==='cal'?viewCal():viewSettings());
+  $$('.tab').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===ui.tab?'page':'false'));
+  $('#fab').hidden=ui.tab!=='today';
+  window.scrollTo(0,0);
+}
+
+/* ---------- Day view ---------- */
+function dayLabel(k){
+  const t=todayKey();
+  if(k===t) return 'Сегодня'; if(k===addDays(t,-1)) return 'Вчера'; if(k===addDays(t,1)) return 'Завтра';
+  return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(parseKey(k));
+}
+function macroRow(name,g,share,first){
+  return h('div',{class:'row'+(first?' first':'')},h('b',null,name),h('span',{class:'val'},fmt1(g)+' г'),
+    h('span',{class:'pc'},share==null?'—':Math.round(share*100)+'%'));
+}
+function viewToday(){
+  const k=ui.date, meals=sortedMeals(k), t=totals(meals), goal=Number(state.settings.goal)||0;
+  const left=goal-t.kcal, over=goal>0&&left<0, pct=goal>0?Math.min(100,t.kcal/goal*100):0;
+  const kc=t.p*4+t.c*4+t.f*9, sh=x=>kc>0?x/kc:null;
+  const wd=new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long'}).format(parseKey(k)).replace(/^./,c=>c.toUpperCase());
+  const shift=n=>()=>{ui.date=addDays(ui.date,n);render();};
+  const nav=h('div',{class:'datenav'},
+    h('button',{class:'icon',type:'button','aria-label':'Предыдущий день',onclick:shift(-1)},'‹'),
+    h('button',{class:'datebtn',type:'button','aria-label':'Перейти к сегодняшнему дню',onclick:()=>{ui.date=todayKey();render();}},
+      h('b',null,dayLabel(k)),h('span',null,wd)),
+    h('button',{class:'icon',type:'button','aria-label':'Следующий день',onclick:shift(1)},'›'));
+  const label=h('section',{class:'label'+(over?' over':'')},
+    h('p',{class:'eyebrow'},'Энергетическая ценность'),
+    h('div',{class:'big-row'},h('span',{class:'big'},fmt(t.kcal)),h('span',{class:'unit'},'ккал'),
+      goal?h('span',{class:'of'},'из '+fmt(goal)):null),
+    h('div',{class:'bar',role:'progressbar','aria-valuemin':0,'aria-valuemax':goal||0,'aria-valuenow':Math.round(t.kcal)},
+      h('i',{style:'width:'+pct+'%'})),
+    h('p',{class:'left'},goal?(over?'Выше нормы на '+fmt(-left)+' ккал':'Осталось '+fmt(left)+' ккал'):'Задай дневную норму в настройках'),
+    h('div',{class:'thick'}),
+    h('div',{class:'row head'},h('span',null,'Пищевые вещества'),h('span',null,'Масса'),h('span',null,'% ккал')),
+    macroRow('Белки',t.p,sh(t.p*4),true),macroRow('Жиры',t.f,sh(t.f*9)),macroRow('Углеводы',t.c,sh(t.c*4)));
+  const out=[nav,label];
+  if(!meals.length){
+    out.push(h('div',{class:'empty-state'},'За этот день пока ничего нет. Нажми «+ Еда» и добавь приём пищи по фото или описанию.'));
+  }else{
+    meals.forEach(m=>{
+      const mt=totals([m]);
+      out.push(h('div',{class:'meal',role:'button',tabindex:'0','aria-label':'Изменить: '+typeName(m.type),
+        onclick:()=>openSheet(k,m),onkeydown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openSheet(k,m);}}},
+        h('div',{class:'meal-head'},h('span',{class:'meal-name'},typeName(m.type)),h('span',{class:'meal-time'},m.time),
+          h('span',{class:'meal-kcal'},fmt(mt.kcal)+' ккал')),
+        h('ul',{class:'items'},m.items.map(i=>h('li',null,h('span',null,i.name+(i.grams?', '+fmt(i.grams)+' г':'')),h('span',null,fmt(i.kcal)))))));
+    });
+    out.push(h('div',{class:'export'},h('p',null,'Записать итог дня в календарь'),
+      h('div',{class:'btns',style:'margin-top:6px'},
+        h('button',{class:'btn',type:'button',onclick:()=>{window.open(gcalUrl(k),'_blank');}},'В Google Календарь'),
+        h('button',{class:'btn',type:'button',onclick:()=>{download('kalorii-'+k+'.ics',buildICS([k]),'text/calendar');toast('Файл скачан. Открой его, чтобы добавить в календарь');}},'Файл .ics'))));
+  }
+  return h('div',null,out);
+}
+
+/* ---------- Calendar view ---------- */
+function viewCal(){
+  const y=ui.month.y, m=ui.month.m, goal=Number(state.settings.goal)||0;
+  const first=new Date(y,m,1), off=(first.getDay()+6)%7, dim=new Date(y,m+1,0).getDate();
+  const title=new Intl.DateTimeFormat('ru-RU',{month:'long',year:'numeric'}).format(first).replace(/\s*г\.?$/,'');
+  const go=n=>()=>{const d=new Date(y,m+n,1);ui.month={y:d.getFullYear(),m:d.getMonth()};render();};
+  const grid=h('div',{class:'cal'});
+  ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].forEach(n=>grid.append(h('div',{class:'dow'},n)));
+  for(let i=0;i<off;i++) grid.append(h('div',{class:'cell empty','aria-hidden':'true'}));
+  let logged=0, within=0, sum=0;
+  for(let d=1;d<=dim;d++){
+    const k=keyOf(y,m,d), meals=state.days[k], t=meals&&meals.length?totals(meals):null;
+    let cls='cell';
+    if(t){ logged++; sum+=t.kcal; const ok=goal<=0||t.kcal<=goal; if(ok&&goal>0) within++; cls+=ok?' ok':' over'; }
+    if(k===todayKey()) cls+=' today';
+    if(k===ui.date) cls+=' sel';
+    grid.append(h('button',{class:cls,type:'button','aria-label':d+' число'+(t?', '+fmt(t.kcal)+' ккал':''),
+      onclick:()=>{ui.date=k;ui.tab='today';render();}},h('span',{class:'d'},d),t?h('span',{class:'k'},fmt(t.kcal)):null));
+  }
+  const prefix=y+'-'+pad(m+1);
+  const stats=h('section',{class:'label'},
+    h('p',{class:'eyebrow'},'Итоги месяца'),
+    h('div',{class:'row first'},h('b',null,'Дней с записями'),h('span',{class:'val'},String(logged)),h('span')),
+    goal?h('div',{class:'row'},h('b',null,'В пределах нормы'),h('span',{class:'val'},within+' из '+logged),h('span')):null,
+    h('div',{class:'row'},h('b',null,'В среднем за день'),h('span',{class:'val'},logged?fmt(sum/logged)+' ккал':'—'),h('span')));
+  const exp=h('div',{class:'btns'},
+    h('button',{class:'btn',type:'button',onclick:()=>{
+      const ks=loggedKeys(prefix); if(!ks.length) return toast('В этом месяце нет записей');
+      download('kalorii-'+prefix+'.ics',buildICS(ks),'text/calendar');toast('Файл скачан. Открой его, чтобы добавить в календарь');}},'Месяц в .ics'),
+    h('button',{class:'btn',type:'button',onclick:()=>{
+      const ks=loggedKeys(); if(!ks.length) return toast('Записей пока нет');
+      download('kalorii-vse.ics',buildICS(ks),'text/calendar');toast('Файл скачан. Открой его, чтобы добавить в календарь');}},'Всё в .ics'));
+  return h('div',null,
+    h('div',{class:'monthnav'},
+      h('button',{class:'icon',type:'button','aria-label':'Предыдущий месяц',onclick:go(-1)},'‹'),
+      h('h2',null,title),
+      h('button',{class:'icon',type:'button','aria-label':'Следующий месяц',onclick:go(1)},'›')),
+    grid,
+    h('div',{class:'legend'},h('span',null,h('i'),'В пределах нормы'),h('span',null,h('i',{class:'o'}),'Выше нормы')),
+    stats,
+    h('p',{class:'eyebrow'},'Экспорт в календарь'),exp,
+    h('p',{class:'hint'},'Повторный импорт файла обновляет те же дни, дубликатов не будет.'));
+}
+
+/* ---------- Settings view ---------- */
+function section(title,...kids){return h('section',{class:'label'},h('p',{class:'eyebrow'},title),kids);}
+function field(label,id,input,hint){return [h('label',{class:'f',for:id},label),input,hint?h('p',{class:'hint'},hint):null];}
+function viewSettings(){
+  const s=state.settings, c=s.calc;
+  const keyIn=h('input',{id:'s-key',type:'password',autocomplete:'off',autocapitalize:'off',spellcheck:'false',value:s.apiKey,
+    oninput:e=>{s.apiKey=e.target.value.trim();save();}});
+  const modelIn=h('input',{id:'s-model',type:'text',list:'models',autocapitalize:'off',spellcheck:'false',value:s.model,
+    oninput:e=>{s.model=e.target.value.trim()||MODELS[0];save();chips.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',String(b.textContent===s.model)));}});
+  const dl=h('datalist',{id:'models'},MODELS.map(m=>h('option',{value:m})));
+  const chips=h('div',{class:'chips'});
+  const modelMsg=h('p',{class:'hint'});
+  const listBtn=h('button',{class:'btn',type:'button',onclick:async()=>{
+    if(!s.apiKey) return toast('Сначала вставь ключ');
+    listBtn.disabled=true; modelMsg.textContent='Проверяю ключ…';
+    try{
+      const ms=await listModels(); chips.replaceChildren();
+      if(!ms.length){modelMsg.textContent='Подходящих моделей не нашлось.';}
+      else{
+        modelMsg.textContent='Ключ работает. Выбери модель (flash и flash-lite обычно бесплатны):';
+        ms.slice(0,14).forEach(n=>chips.append(h('button',{class:'chip',type:'button','aria-pressed':String(n===s.model),onclick:()=>{
+          s.model=n;modelIn.value=n;save();chips.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',String(b.textContent===n)));}},n)));
+      }
+    }catch(e){ modelMsg.textContent='Не получилось: '+e.message+' (проверь ключ и VPN)'; }
+    listBtn.disabled=false;
+  }},'Проверить ключ и показать модели');
+  const gemini=section('Gemini',
+    field('API-ключ','s-key',keyIn,null),
+    h('p',{class:'hint'},'Ключ хранится только в этом браузере. Бесплатный ключ: ',h('a',{href:'https://aistudio.google.com/apikey',target:'_blank',rel:'noopener'},'aistudio.google.com/apikey')),
+    field('Модель','s-model',modelIn,null),dl,
+    h('div',{class:'btns'},listBtn),modelMsg,chips);
+
+  const goalIn=h('input',{id:'s-goal',type:'number',inputmode:'numeric',min:'0',step:'50',value:s.goal||'',
+    oninput:e=>{s.goal=Math.round(num(e.target.value));save();}});
+  const mk=(id,type,key,extra)=>h('input',Object.assign({id:id,type:type,inputmode:'decimal',min:'0',step:'any',value:c[key],
+    oninput:e=>{c[key]=e.target.value;save();}},extra||{}));
+  const sex=h('select',{id:'c-sex',value:c.sex,onchange:e=>{c.sex=e.target.value;save();}},h('option',{value:'m'},'Мужчина'),h('option',{value:'f'},'Женщина'));
+  const act=h('select',{id:'c-act',value:c.activity,onchange:e=>{c.activity=e.target.value;save();}},
+    h('option',{value:'1.2'},'Почти нет движения'),h('option',{value:'1.375'},'1–3 тренировки в неделю'),
+    h('option',{value:'1.55'},'3–5 тренировок в неделю'),h('option',{value:'1.725'},'6–7 тренировок в неделю'));
+  const def=h('select',{id:'c-def',value:c.deficit,onchange:e=>{c.deficit=e.target.value;save();}},
+    h('option',{value:'10'},'Мягкий, −10%'),h('option',{value:'15'},'Умеренный, −15%'),h('option',{value:'20'},'Заметный, −20%'));
+  const calcOut=h('div',{class:'sum',hidden:true});
+  const calcBtn=h('button',{class:'btn primary',type:'button',onclick:()=>{
+    const w=num(c.weight),ht=num(c.height),a=num(c.age);
+    if(!w||!ht||!a){ calcOut.hidden=false; calcOut.replaceChildren(h('span',null,'Заполни возраст, рост и вес.')); return; }
+    const bmr=10*w+6.25*ht-5*a+(c.sex==='f'?-161:5), tdee=bmr*Number(c.activity);
+    const floor=Math.max(bmr,c.sex==='f'?1200:1500);
+    const target=Math.round(Math.max(tdee*(1-Number(c.deficit)/100),floor)/10)*10;
+    calcOut.hidden=false;
+    calcOut.replaceChildren(
+      h('div',null,'Поддержание веса: ≈ '+fmt(Math.round(tdee/10)*10)+' ккал'),
+      h('div',{class:'big-line'},h('span',{class:'n'},fmt(target)),h('span',{class:'unit'},'ккал в день')),
+      h('div',{class:'btns',style:'margin-top:8px'},h('button',{class:'btn accent',type:'button',onclick:()=>{
+        s.goal=target;goalIn.value=target;save();toast('Норма: '+fmt(target)+' ккал');}},'Сделать нормой')),
+      h('p',{class:'note'},'Это ориентир по формуле Миффлина — Сан-Жеора, а не медицинская рекомендация. Нижняя граница ограничена базовым обменом.'));
+  }},'Рассчитать');
+  const goal=section('Дневная норма',
+    field('Норма, ккал','s-goal',goalIn,null),
+    h('p',{class:'eyebrow',style:'margin-top:18px'},'Калькулятор нормы'),
+    h('div',{class:'two'},[field('Пол','c-sex',sex),field('Возраст','c-age',mk('c-age','number','age'))]),
+    h('div',{class:'two'},[field('Рост, см','c-h',mk('c-h','number','height')),field('Вес, кг','c-w',mk('c-w','number','weight'))]),
+    field('Активность','c-act',act),field('Дефицит','c-def',def),
+    h('div',{class:'btns'},calcBtn),h('div',{style:'margin-top:12px'},calcOut));
+
+  const fileIn=h('input',{type:'file',accept:'application/json,.json',hidden:true,id:'imp',onchange:async e=>{
+    const f=e.target.files[0]; e.target.value=''; if(!f) return;
+    try{
+      const o=JSON.parse(await f.text()); if(!o||typeof o.days!=='object') throw new Error('bad');
+      Object.keys(o.days).forEach(k=>{ if(/^\d{4}-\d{2}-\d{2}$/.test(k)&&Array.isArray(o.days[k])) state.days[k]=o.days[k]; });
+      if(o.settings&&o.settings.goal) s.goal=Number(o.settings.goal)||s.goal;
+      save(); toast('Копия загружена'); render();
+    }catch(err){ toast('Не удалось прочитать файл копии'); }
+  }});
+  const eraseBtn=h('button',{class:'btn',type:'button'},'Стереть все записи');
+  arm(eraseBtn,'Точно? Нажми ещё раз',()=>{state.days={};save();toast('Записи стёрты');render();});
+  const data=section('Данные',
+    h('p',{class:'hint',style:'margin-top:0'},'Всё хранится в браузере на этом телефоне. Делай копию, чтобы не потерять записи при очистке данных сайта.'),
+    h('div',{class:'btns'},
+      h('button',{class:'btn',type:'button',onclick:()=>{
+        download('tarelka-backup-'+todayKey()+'.json',JSON.stringify({version:1,settings:{goal:s.goal,model:s.model,calc:s.calc},days:state.days},null,1),'application/json');
+        toast('Копия сохранена');}},'Скачать копию'),
+      h('button',{class:'btn',type:'button',onclick:()=>fileIn.click()},'Загрузить копию'),fileIn,eraseBtn));
+
+  const standalone=window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches;
+  const inst=section('Приложение',
+    standalone?h('p',{class:'hint',style:'margin-top:0'},'Приложение уже установлено.')
+    :h('div',null,
+      h('p',{class:'hint',style:'margin-top:0'},'Chrome → меню ⋮ → «Установить приложение» (или «Добавить на главный экран»). Тогда оно откроется без адресной строки и будет работать без интернета, кроме запросов к Gemini.'),
+      installEvt?h('div',{class:'btns'},h('button',{class:'btn accent',type:'button',onclick:async()=>{installEvt.prompt();try{await installEvt.userChoice;}catch(e){}installEvt=null;render();}},'Установить'))
+      :null));
+  return h('div',null,gemini,goal,data,inst);
+}
+
+/* ---------- Add / edit sheet ---------- */
+function openSheet(date,meal){
+  const n=new Date();
+  sheet=meal?{stage:'review',mealId:meal.id,date:date,type:meal.type,time:meal.time,text:'',img:null,note:'',busy:false,error:'',
+      items:meal.items.map(x=>Object.assign({},x))}
+    :{stage:'input',mealId:null,date:date,type:typeByHour(n.getHours()),time:date===todayKey()?hhmm(n):'12:00',text:'',img:null,note:'',busy:false,error:'',items:[]};
+  $('#toast').hidden=true; $('#sheet').hidden=false; document.body.classList.add('noscroll'); renderSheet();
+}
+function closeSheet(){ sheet=null; sumEls=null; $('#sheet').hidden=true; document.body.classList.remove('noscroll'); }
+function whenRow(){
+  return h('div',{class:'two'},
+    h('div',null,h('label',{class:'f',for:'m-type'},'Приём'),
+      h('select',{id:'m-type',value:sheet.type,onchange:e=>{sheet.type=e.target.value;}},TYPES.map(t=>h('option',{value:t[0]},t[1])))),
+    h('div',null,h('label',{class:'f',for:'m-time'},'Время'),
+      h('input',{id:'m-time',type:'time',value:sheet.time,onchange:e=>{sheet.time=e.target.value||sheet.time;}})));
+}
+function renderSheet(){
+  if(!sheet) return;
+  const p=$('#panel');
+  const title=sheet.stage==='input'?'Что съел?':(sheet.mealId?'Изменить':'Проверь итог');
+  p.replaceChildren(
+    h('div',{class:'panel-head'},h('h2',null,title),h('button',{class:'btn',type:'button','aria-label':'Закрыть',onclick:closeSheet},'✕')),
+    sheet.stage==='input'?sheetInput():sheetReview());
+}
+async function onPick(e){
+  const f=e.target.files[0]; e.target.value=''; if(!f||!sheet) return;
+  const cur=sheet;
+  try{ cur.img=await shrink(f); cur.error=''; }catch(err){ cur.error='Не удалось открыть фото.'; }
+  if(sheet===cur) renderSheet();
+}
+function sheetInput(){
+  const cam=h('input',{type:'file',accept:'image/*',capture:'environment',hidden:true,onchange:onPick});
+  const gal=h('input',{type:'file',accept:'image/*',hidden:true,onchange:onPick});
+  const noKey=sheet.error==='NO_KEY';
+  return h('div',null,
+    whenRow(),
+    h('label',{class:'f'},'Фото'),
+    h('div',{class:'photo'},
+      h('button',{class:'btn',type:'button',onclick:()=>cam.click()},'Снять'),
+      h('button',{class:'btn',type:'button',onclick:()=>gal.click()},'Из галереи'),cam,gal),
+    sheet.img?h('div',{class:'preview'},h('img',{src:'data:image/jpeg;base64,'+sheet.img,alt:'Фото еды'}),
+      h('div',{class:'btns',style:'margin-top:8px'},h('button',{class:'btn',type:'button',onclick:()=>{sheet.img=null;renderSheet();}},'Убрать фото'))):null,
+    h('label',{class:'f',for:'m-text'},'Описание'),
+    h('textarea',{id:'m-text',placeholder:'Например: гречка 150 г, две сосиски, чай без сахара',value:sheet.text,
+      oninput:e=>{sheet.text=e.target.value;}}),
+    h('p',{class:'hint'},'Вес и способ приготовления делают оценку точнее. Если не уверен, оставь только фото.'),
+    sheet.error?(noKey
+      ?h('div',{class:'error'},'Нужен ключ Gemini. ',h('a',{href:'#',style:'color:inherit;font-weight:800',onclick:ev=>{ev.preventDefault();closeSheet();ui.tab='set';render();}},'Открыть настройки'))
+      :h('div',{class:'error',role:'alert'},sheet.error)):null,
+    h('div',{class:'btns'},
+      h('button',{class:'btn accent',type:'button',disabled:sheet.busy,onclick:runAnalyze},sheet.busy?'Считаю…':'Посчитать'),
+      h('button',{class:'btn',type:'button',disabled:sheet.busy,onclick:()=>{sheet.stage='review';sheet.items=[{name:'',grams:0,kcal:0,protein:0,fat:0,carbs:0}];renderSheet();}},'Ввести вручную')));
+}
+async function runAnalyze(){
+  const cur=sheet; if(!cur) return;
+  if(!cur.img&&!cur.text.trim()){ cur.error='Добавь фото или описание еды.'; return renderSheet(); }
+  if(!state.settings.apiKey){ cur.error='NO_KEY'; return renderSheet(); }
+  cur.busy=true; cur.error=''; renderSheet();
+  try{
+    const r=await askGemini(cur.img,cur.text.trim());
+    if(sheet!==cur) return;
+    cur.busy=false;
+    if(!r.items.length){ cur.error=r.note||'Еду распознать не удалось. Уточни описание или сделай другое фото.'; }
+    else{ cur.items=r.items; cur.note=r.note; cur.stage='review'; }
+  }catch(err){
+    if(sheet!==cur) return;
+    cur.busy=false; cur.error=err.message||String(err);
+  }
+  renderSheet();
+}
+function updateSum(){
+  if(!sumEls||!sheet) return;
+  const t=totals([{items:sheet.items}]);
+  sumEls.kcal.textContent=fmt(t.kcal);
+  sumEls.macros.textContent='Б '+fmt1(t.p)+' · Ж '+fmt1(t.f)+' · У '+fmt1(t.c)+' г';
+}
+function itemEditor(it,i){
+  it._b={g:it.grams,k:it.kcal,p:it.protein,f:it.fat,c:it.carbs};
+  const macros=h('span',{class:'macros'});
+  const setMacros=()=>{macros.textContent='Б '+fmt1(it.protein)+' · Ж '+fmt1(it.fat)+' · У '+fmt1(it.carbs);};
+  setMacros();
+  const kcalIn=h('input',{type:'number',inputmode:'decimal',min:'0',step:'any','aria-label':'Ккал',value:it.kcal||'',
+    oninput:e=>{it.kcal=num(e.target.value);it._b={g:it.grams,k:it.kcal,p:it.protein,f:it.fat,c:it.carbs};updateSum();}});
+  const gramsIn=h('input',{type:'number',inputmode:'decimal',min:'0',step:'any','aria-label':'Граммы',value:it.grams||'',
+    oninput:e=>{
+      const g=num(e.target.value);
+      if(g>0&&it._b.g>0){
+        const k=g/it._b.g;
+        it.kcal=Math.round(it._b.k*k); it.protein=r1(it._b.p*k); it.fat=r1(it._b.f*k); it.carbs=r1(it._b.c*k);
+        kcalIn.value=it.kcal||''; setMacros();
+      }
+      it.grams=g; updateSum();
+    }});
+  return h('div',{class:'ed'},
+    h('input',{type:'text','aria-label':'Название',placeholder:'Продукт',value:it.name,oninput:e=>{it.name=e.target.value;}}),
+    h('div',{class:'ed-grid'},
+      h('div',null,h('small',null,'Граммы'),gramsIn),
+      h('div',null,h('small',null,'Ккал'),kcalIn),
+      h('button',{class:'btn rm',type:'button','aria-label':'Удалить продукт',onclick:()=>{sheet.items.splice(i,1);renderSheet();}},'✕')),
+    macros);
+}
+function sheetReview(){
+  const list=h('div',null,sheet.items.map(itemEditor));
+  const kcalEl=h('span',{class:'n'},'0'), macroEl=h('span',{class:'macros'});
+  sumEls={kcal:kcalEl,macros:macroEl};
+  const del=sheet.mealId?h('button',{class:'btn',type:'button'},'Удалить приём'):null;
+  if(del) arm(del,'Точно? Нажми ещё раз',()=>{
+    state.days[sheet.date]=(state.days[sheet.date]||[]).filter(x=>x.id!==sheet.mealId);
+    if(!state.days[sheet.date].length) delete state.days[sheet.date];
+    save(); closeSheet(); render(); toast('Удалено');});
+  const out=h('div',null,
+    whenRow(),
+    sheet.note?h('p',{class:'note'},sheet.note):null,
+    h('p',{class:'note'},sheet.mealId?'Правь граммы: ккал и БЖУ пересчитаются.':'Оценка приблизительная. Поправь граммы или удали лишнее: ккал и БЖУ пересчитаются.'),
+    h('div',{style:'margin-top:8px'},list),
+    h('div',{class:'btns',style:'margin-top:0'},h('button',{class:'btn',type:'button',onclick:()=>{
+      sheet.items.push({name:'',grams:0,kcal:0,protein:0,fat:0,carbs:0});renderSheet();}},'+ Продукт')),
+    h('div',{class:'sum'},h('div',{class:'big-line'},kcalEl,h('span',{class:'unit'},'ккал')),macroEl),
+    sheet.error?h('div',{class:'error',role:'alert'},sheet.error):null,
+    h('div',{class:'btns'},
+      h('button',{class:'btn accent',type:'button',onclick:saveMeal},'Сохранить'),
+      sheet.mealId?null:h('button',{class:'btn',type:'button',onclick:()=>{sheet.stage='input';sheet.error='';renderSheet();}},'Назад'),
+      del));
+  setTimeout(updateSum,0);
+  return out;
+}
+function saveMeal(){
+  const items=sheet.items.map(i=>({name:String(i.name||'').trim()||'Без названия',grams:Math.round(num(i.grams)),
+    kcal:Math.round(num(i.kcal)),protein:r1(num(i.protein)),fat:r1(num(i.fat)),carbs:r1(num(i.carbs))}))
+    .filter((i,idx)=>sheet.items[idx].name||i.kcal>0);
+  if(!items.length){ sheet.error='Добавь хотя бы один продукт.'; return renderSheet(); }
+  const day=state.days[sheet.date]||(state.days[sheet.date]=[]);
+  if(sheet.mealId){
+    const m=day.find(x=>x.id===sheet.mealId);
+    if(m){ m.type=sheet.type; m.time=sheet.time; m.items=items; }
+  }else day.push({id:uid(),type:sheet.type,time:sheet.time,items:items});
+  save(); ui.date=sheet.date; closeSheet(); render(); toast('Сохранено');
+}
+
+/* ---------- boot ---------- */
+$$('.tab').forEach(b=>b.addEventListener('click',()=>{ui.tab=b.dataset.tab;render();}));
+$('#fab').addEventListener('click',()=>openSheet(ui.date,null));
+$('#scrim').addEventListener('click',closeSheet);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sheet) closeSheet();});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;if(ui.tab==='set') render();});
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
+  window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});
+}
+window.Tarelka={buildICS:buildICS,totals:totals,getState:()=>state,openSheet:openSheet};
+render();
+})();
+</script>
+</body>
+</html>
